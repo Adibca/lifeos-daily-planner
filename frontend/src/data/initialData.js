@@ -1,0 +1,142 @@
+export const initialTasks = [
+  {
+    id: 't-1',
+    title: 'Review Q4 Productivity Roadmap & Life Goals',
+    description: 'Assess milestones for personal projects and health targets.',
+    time: '08:30 AM',
+    slot: '08:00 - 09:30',
+    category: 'Deep Work',
+    priority: 'high',
+    completed: true,
+    isOverdue: false,
+    date: 'Today',
+  },
+  {
+    id: 't-2',
+    title: 'Review and refine LifeOS SQLite schema with SQLAlchemy',
+    description: 'Ensure foreign keys for Task, Habit, and Reminder models are indexed.',
+    time: '10:00 AM',
+    slot: '10:00 - 11:30',
+    category: 'Engineering',
+    priority: 'high',
+    completed: true,
+    isOverdue: false,
+    date: 'Today',
+  },
+  {
+    id: 't-3',
+    title: 'Design Telegram Bot notification payload and webhooks',
+    description: 'Include inline buttons for 1-click task snoozing and completion.',
+    time: '02:00 PM',
+    slot: '14:00 - 15:30',
+    category: 'Engineering',
+    priority: 'medium',
+    completed: false,
+    isOverdue: false,
+    date: 'Today',
+  },
+  {
+    id: 't-4',
+    title: 'Send weekly progress summary to accountability partner',
+    description: 'Post summary metrics from LifeOS habit tracker.',
+    time: '05:00 PM',
+    slot: '17:00 - 17:30',
+    category: 'Personal',
+    priority: 'low',
+    completed: false,
+    isOverdue: false,
+    date: 'Today',
+  },
+  {
+    id: 't-5',
+    title: 'Submit quarterly tax estimation documents',
+    description: 'Due yesterday evening; needs immediate attention.',
+    time: 'Yesterday',
+    slot: 'Overdue',
+    category: 'Finance',
+    priority: 'high',
+    completed: false,
+    isOverdue: true,
+    date: 'Yesterday',
+  },
+  {
+    id: 't-6',
+    title: 'Doctor prescription refill & checkup booking',
+    description: 'Call clinic to confirm schedule.',
+    time: '2 days ago',
+    slot: 'Overdue',
+    category: 'Health',
+    priority: 'medium',
+    completed: false,
+    isOverdue: true,
+    date: '2 days ago',
+  },
+  {
+    id: 't-7',
+    title: 'Evening wind-down & 30-min Kindle reading',
+    description: 'Atomic Habits chapter 4 & mindfulness breathing.',
+    time: '09:30 PM',
+    slot: '21:30 - 22:30',
+    category: 'Routine',
+    priority: 'low',
+    completed: false,
+    isOverdue: false,
+    date: 'Today',
+  }
+];
+
+export const initialHabits = [
+  {
+    id: 'h-1',
+    name: 'Morning Hydration & Electrolytes',
+    category: 'Health',
+    streak: 18,
+    target: '1 Glass',
+    history: [true, true, true, true, true, true, true], // Mon-Sun
+    completedToday: true,
+    timeOfDay: 'Morning'
+  },
+  {
+    id: 'h-2',
+    name: '45-Minute Focused Workout or Run',
+    category: 'Fitness',
+    streak: 12,
+    target: '45 min',
+    history: [true, true, false, true, true, true, true],
+    completedToday: true,
+    timeOfDay: 'Morning'
+  },
+  {
+    id: 'h-3',
+    name: 'Deep Work Session (No Social Media)',
+    category: 'Focus',
+    streak: 9,
+    target: '90 min',
+    history: [true, true, true, true, true, true, false],
+    completedToday: false,
+    timeOfDay: 'Afternoon'
+  },
+  {
+    id: 'h-4',
+    name: 'Nightly Reflection & Tomorrow Planning',
+    category: 'Mindset',
+    streak: 24,
+    target: '15 min',
+    history: [true, true, true, true, true, true, false],
+    completedToday: false,
+    timeOfDay: 'Night'
+  }
+];
+
+export const initialScheduleSlots = [
+  { time: '07:00 AM', label: 'Morning Ritual & Cold Shower', type: 'routine', status: 'completed' },
+  { time: '08:30 AM', label: 'Review Q4 Productivity Roadmap', type: 'task', status: 'completed', taskId: 't-1' },
+  { time: '10:00 AM', label: 'LifeOS Architecture & FastAPI Setup', type: 'task', status: 'completed', taskId: 't-2' },
+  { time: '12:30 PM', label: 'Nutrient-Dense Lunch & 15m Walk', type: 'break', status: 'upcoming' },
+  { time: '02:00 PM', label: 'Telegram Bot API & Webhook Design', type: 'task', status: 'upcoming', taskId: 't-3', active: true },
+  { time: '04:30 PM', label: 'Quick Workout / Mobility Drill', type: 'routine', status: 'upcoming' },
+  { time: '05:00 PM', label: 'Send Weekly Progress Summary', type: 'task', status: 'upcoming', taskId: 't-4' },
+  { time: '07:30 PM', label: 'Dinner & Family Time', type: 'break', status: 'upcoming' },
+  { time: '09:30 PM', label: 'Evening Reading & Wind-down', type: 'routine', status: 'upcoming', taskId: 't-7' },
+];
+
