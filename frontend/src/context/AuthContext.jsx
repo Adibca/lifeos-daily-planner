@@ -7,51 +7,61 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   useEffect(() => {
-    // If Supabase is configured, hook into persistent auth sessions
-    if (isSupabaseConfigured() && supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchProfile(session.user.id);
-        }
-        setLoading(false);
-      });
+    let mounted = true;
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-        }
-        setLoading(false);
-      });
-
-      return () => subscription.unsubscribe();
-    } else {
-      // Offline / Local Demo mode persistent session
-      const savedUser = localStorage.getItem('lifeos_demo_user');
-      if (savedUser) {
+    const initAuth = async () => {
+      if (isSupabaseConfigured() && supabase) {
         try {
-          setUser(JSON.parse(savedUser));
-        } catch (e) {
-          // ignore
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) throw error;
+
+          if (mounted) {
+            setUser(session?.user ?? null);
+            if (session?.user) {
+              await fetchProfile(session.user.id);
+            }
+          }
+        } catch (err) {
+          console.warn('[Auth] Session check notice:', err);
+        } finally {
+          if (mounted) setLoading(false);
         }
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (!mounted) return;
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          } else {
+            setProfile(null);
+          }
+          setLoading(false);
+        });
+
+        return () => subscription.unsubscribe();
       } else {
-        // Default local user
-        const defaultUser = {
-          id: 'local-user-default',
-          email: 'aditya@lifeos.local',
-          user_metadata: { full_name: 'Aditya' }
-        };
-        setUser(defaultUser);
-        localStorage.setItem('lifeos_demo_user', JSON.stringify(defaultUser));
+        // Fallback demo mode when Supabase credentials are not configured yet
+        const savedUser = localStorage.getItem('lifeos_demo_user');
+        if (savedUser) {
+          try {
+            setUser(JSON.parse(savedUser));
+          } catch {
+            // ignore
+          }
+        }
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
-    }
+    };
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const fetchProfile = async (userId) => {
@@ -61,7 +71,8 @@ export const AuthProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
+
       if (!error && data) {
         setProfile(data);
       }
@@ -71,33 +82,63 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithEmail = async (email, password) => {
+    setAuthError(null);
     if (!isSupabaseConfigured() || !supabase) {
-      // Simulate guest sign in
-      const guest = { id: `user-${Date.now()}`, email, user_metadata: { full_name: email.split('@')[0] } };
+      const guest = { 
+        id: `guest-${Date.now()}`, 
+        email, 
+        user_metadata: { full_name: email.split('@')[0] } 
+      };
       setUser(guest);
       localStorage.setItem('lifeos_demo_user', JSON.stringify(guest));
       return { success: true };
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+
+    const { data, error } = await supabase.auth.signInWithPassword({ 
+      email: email.trim(), 
+      password 
+    });
+    if (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+    setUser(data.user);
+    if (data.user) {
+      await fetchProfile(data.user.id);
+    }
     return { success: true, data };
   };
 
   const signUpWithEmail = async (email, password, fullName) => {
+    setAuthError(null);
     if (!isSupabaseConfigured() || !supabase) {
-      const guest = { id: `user-${Date.now()}`, email, user_metadata: { full_name: fullName } };
+      const guest = { 
+        id: `guest-${Date.now()}`, 
+        email, 
+        user_metadata: { full_name: fullName || email.split('@')[0] } 
+      };
       setUser(guest);
       localStorage.setItem('lifeos_demo_user', JSON.stringify(guest));
       return { success: true };
     }
+
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password,
       options: {
         data: { full_name: fullName }
       }
     });
-    if (error) throw error;
+
+    if (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+
+    setUser(data.user);
+    if (data.user) {
+      await fetchProfile(data.user.id);
+    }
     return { success: true, data };
   };
 
@@ -116,6 +157,7 @@ export const AuthProvider = ({ children }) => {
         user,
         profile,
         loading,
+        authError,
         isAuthModalOpen,
         setIsAuthModalOpen,
         signInWithEmail,
@@ -136,4 +178,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

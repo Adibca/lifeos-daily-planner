@@ -10,8 +10,11 @@ import {
   CheckCircle2,
   Download,
   User,
-  Wifi,
-  WifiOff
+  Cloud,
+  CloudCheck,
+  CloudOff,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { useTask } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
@@ -28,7 +31,9 @@ export const Header = ({ onToggleSidebar, onOpenInstall, onOpenAuth }) => {
     setIsQuickAddOpen, 
     metrics, 
     setActiveTab,
-    isOnline
+    isOnline,
+    syncStatus,
+    triggerSync
   } = useTask();
 
   const { user, isConfigured } = useAuth();
@@ -55,6 +60,54 @@ export const Header = ({ onToggleSidebar, onOpenInstall, onOpenAuth }) => {
     year: 'numeric'
   }).format(new Date());
 
+  const renderSyncBadge = () => {
+    if (!isOnline || syncStatus === 'offline') {
+      return (
+        <span 
+          onClick={triggerSync}
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-pointer"
+          title="Offline mode - changes stored locally"
+        >
+          <CloudOff className="w-3 h-3 mr-1" />
+          Offline
+        </span>
+      );
+    }
+
+    if (syncStatus === 'syncing') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/10 text-brand-300 border border-brand-500/20">
+          <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+          Syncing...
+        </span>
+      );
+    }
+
+    if (syncStatus === 'error') {
+      return (
+        <span 
+          onClick={triggerSync}
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 cursor-pointer"
+          title="Click to retry cloud sync"
+        >
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Sync Error
+        </span>
+      );
+    }
+
+    return (
+      <span 
+        onClick={triggerSync}
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-pointer"
+        title="Realtime Supabase Cloud Sync Active"
+      >
+        <Cloud className="w-3 h-3 mr-1 text-emerald-400" />
+        Cloud Synced
+      </span>
+    );
+  };
+
   return (
     <header className="sticky top-0 z-30 h-20 bg-dark-900/80 backdrop-blur-md border-b border-dark-700/60 px-4 sm:px-8 flex items-center justify-between">
       {/* Left: Mobile Toggle & Page Info */}
@@ -72,20 +125,15 @@ export const Header = ({ onToggleSidebar, onOpenInstall, onOpenAuth }) => {
             <CalendarIcon className="w-4 h-4 text-brand-400" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
               <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">Daily Command Center</h1>
               <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 {metrics.completedToday}/{metrics.totalToday} Complete
               </span>
-              {!isOnline && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  <WifiOff className="w-3 h-3 mr-1" />
-                  Offline
-                </span>
-              )}
+              {renderSyncBadge()}
             </div>
-            <p className="text-xs text-slate-400">{todayFormatted} • PWA Cloud Sync Active</p>
+            <p className="text-xs text-slate-400">{todayFormatted} • Multi-Device Realtime Sync</p>
           </div>
         </div>
       </div>
@@ -144,13 +192,13 @@ export const Header = ({ onToggleSidebar, onOpenInstall, onOpenAuth }) => {
         <button
           onClick={onOpenAuth}
           className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-dark-800 border border-dark-700 text-xs font-medium text-slate-300 hover:text-white flex items-center space-x-2 transition"
-          title="Supabase Sync & Account"
+          title="Supabase Cloud Account & Sync"
         >
           <div className="w-6 h-6 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-xs">
             {user?.email ? user.email.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
           </div>
           <span className="hidden md:inline text-xs">
-            {user?.user_metadata?.full_name || 'Account'}
+            {user?.email ? user.email.split('@')[0] : 'Sign In'}
           </span>
         </button>
 

@@ -7,7 +7,11 @@ import {
   Activity, 
   WifiOff, 
   Send,
-  Sparkles
+  Sparkles,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { useTask } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
@@ -17,8 +21,45 @@ import {
   getNotificationPermission 
 } from '../../services/notifications';
 
+// Sync status badge for mobile header
+const SyncBadge = ({ syncStatus }) => {
+  if (syncStatus === 'syncing') {
+    return (
+      <span className="flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+        <RefreshCw className="w-2.5 h-2.5 mr-0.5 animate-spin" />
+        Sync
+      </span>
+    );
+  }
+  if (syncStatus === 'error') {
+    return (
+      <span className="flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+        <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+        Error
+      </span>
+    );
+  }
+  if (syncStatus === 'offline') {
+    return (
+      <span className="flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+        <WifiOff className="w-2.5 h-2.5 mr-0.5" />
+        Offline
+      </span>
+    );
+  }
+  if (syncStatus === 'synced') {
+    return (
+      <span className="flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+        <Cloud className="w-2.5 h-2.5 mr-0.5" />
+        Synced
+      </span>
+    );
+  }
+  return null; // loading state — no badge
+};
+
 export const MobileHeader = ({ onOpenInstall, onOpenAuth }) => {
-  const { isOnline, setActiveTab } = useTask();
+  const { isOnline, syncStatus, setActiveTab } = useTask();
   const { user } = useAuth();
   const [notificationActive, setNotificationActive] = useState(
     () => getNotificationPermission() === 'granted'
@@ -47,12 +88,7 @@ export const MobileHeader = ({ onOpenInstall, onOpenAuth }) => {
         <div>
           <div className="flex items-center space-x-1.5">
             <span className="font-extrabold text-base text-white tracking-tight">LifeOS</span>
-            {!isOnline && (
-              <span className="flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <WifiOff className="w-2.5 h-2.5 mr-0.5" />
-                Offline
-              </span>
-            )}
+            <SyncBadge syncStatus={syncStatus} />
           </div>
           <p className="text-[10px] text-slate-400">PWA Mobile Suite</p>
         </div>

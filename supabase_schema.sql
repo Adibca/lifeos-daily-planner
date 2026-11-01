@@ -1,9 +1,7 @@
 -- ==============================================================
--- LifeOS Daily Planner - Supabase Database Schema & RLS Policies
+-- LifeOS Daily Planner - Production Supabase Database Schema
+-- Multi-Device Realtime Cloud Synchronization with RLS
 -- ==============================================================
-
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. PROFILES TABLE (Linked to auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -16,13 +14,14 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile" 
 ON public.profiles FOR SELECT 
 USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" 
 ON public.profiles FOR UPDATE 
 USING (auth.uid() = id);
@@ -32,19 +31,22 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, full_name)
-  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name');
+  VALUES (new.id, new.email, COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)))
+  ON CONFLICT (id) DO UPDATE 
+  SET email = EXCLUDED.email, full_name = EXCLUDED.full_name, updated_at = now();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
--- 2. TASKS TABLE
+-- 2. TASKS TABLE (TEXT PRIMARY KEY supports offline client IDs)
 CREATE TABLE IF NOT EXISTS public.tasks (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
@@ -59,29 +61,21 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for tasks
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON public.tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON public.tasks(updated_at);
+
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own tasks" 
-ON public.tasks FOR SELECT 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own tasks" 
-ON public.tasks FOR INSERT 
+DROP POLICY IF EXISTS "Users can manage own tasks" ON public.tasks;
+CREATE POLICY "Users can manage own tasks" 
+ON public.tasks FOR ALL 
+USING (auth.uid() = user_id) 
 WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own tasks" 
-ON public.tasks FOR UPDATE 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own tasks" 
-ON public.tasks FOR DELETE 
-USING (auth.uid() = user_id);
 
 
 -- 3. HABITS TABLE
 CREATE TABLE IF NOT EXISTS public.habits (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
   category TEXT DEFAULT 'Health',
@@ -90,34 +84,24 @@ CREATE TABLE IF NOT EXISTS public.habits (
   time_of_day TEXT DEFAULT 'Morning',
   history BOOLEAN[] DEFAULT '{false,false,false,false,false,false,false}',
   completed_today BOOLEAN DEFAULT FALSE,
-  last_completed_date DATE,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for habits
+CREATE INDEX IF NOT EXISTS idx_habits_user_id ON public.habits(user_id);
+
 ALTER TABLE public.habits ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own habits" 
-ON public.habits FOR SELECT 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own habits" 
-ON public.habits FOR INSERT 
+DROP POLICY IF EXISTS "Users can manage own habits" ON public.habits;
+CREATE POLICY "Users can manage own habits" 
+ON public.habits FOR ALL 
+USING (auth.uid() = user_id) 
 WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own habits" 
-ON public.habits FOR UPDATE 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own habits" 
-ON public.habits FOR DELETE 
-USING (auth.uid() = user_id);
 
 
 -- 4. SCHEDULE SLOTS TABLE
 CREATE TABLE IF NOT EXISTS public.schedule_slots (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   time TEXT NOT NULL,
   label TEXT NOT NULL,
@@ -125,33 +109,47 @@ CREATE TABLE IF NOT EXISTS public.schedule_slots (
   status TEXT DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'completed', 'active')),
   task_id TEXT,
   is_active BOOLEAN DEFAULT FALSE,
-  sort_order INT DEFAULT 0,
+  slot_index INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for schedule slots
+CREATE INDEX IF NOT EXISTS idx_slots_user_id ON public.schedule_slots(user_id);
+
 ALTER TABLE public.schedule_slots ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own schedule slots" 
-ON public.schedule_slots FOR SELECT 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own schedule slots" 
-ON public.schedule_slots FOR INSERT 
+DROP POLICY IF EXISTS "Users can manage own schedule slots" ON public.schedule_slots;
+CREATE POLICY "Users can manage own schedule slots" 
+ON public.schedule_slots FOR ALL 
+USING (auth.uid() = user_id) 
 WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can update own schedule slots" 
-ON public.schedule_slots FOR UPDATE 
-USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can delete own schedule slots" 
-ON public.schedule_slots FOR DELETE 
-USING (auth.uid() = user_id);
+-- 5. REMINDERS TABLE
+CREATE TABLE IF NOT EXISTS public.reminders (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT NOT NULL,
+  time TEXT NOT NULL,
+  type TEXT DEFAULT 'notification',
+  is_enabled BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON public.reminders(user_id);
+
+ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage own reminders" ON public.reminders;
+CREATE POLICY "Users can manage own reminders" 
+ON public.reminders FOR ALL 
+USING (auth.uid() = user_id) 
+WITH CHECK (auth.uid() = user_id);
 
 
--- 5. REALTIME REPLICATION (For multi-device auto-sync)
+-- 6. ENABLE REALTIME BROADCASTING ACROSS MOBILE & LAPTOP
 ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.habits;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.schedule_slots;
-
+ALTER PUBLICATION supabase_realtime ADD TABLE public.reminders;

@@ -1,16 +1,29 @@
-const QUEUE_STORAGE_KEY = 'lifeos_offline_mutations_v1';
+import { idbGetAll, idbSetAll, STORES } from './indexedDb';
 
-export const getOfflineQueue = () => {
+const QUEUE_STORAGE_KEY = 'lifeos_offline_mutations_v2';
+
+export const getOfflineQueue = async () => {
+  try {
+    const fromIdb = await idbGetAll(STORES.MUTATIONS);
+    if (fromIdb && fromIdb.length > 0) return fromIdb;
+  } catch (e) {
+    // fallback
+  }
+
   try {
     const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.error('Failed reading offline queue:', e);
     return [];
   }
 };
 
-export const saveOfflineQueue = (queue) => {
+export const saveOfflineQueue = async (queue) => {
+  try {
+    await idbSetAll(STORES.MUTATIONS, queue);
+  } catch (e) {
+    // fallback
+  }
   try {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   } catch (e) {
@@ -18,77 +31,105 @@ export const saveOfflineQueue = (queue) => {
   }
 };
 
-export const enqueueMutation = (type, payload) => {
-  const queue = getOfflineQueue();
+export const enqueueMutation = async (type, payload) => {
+  const queue = await getOfflineQueue();
+  // Deduplicate mutations for the same entity id
+  const filtered = queue.filter(
+    (m) => !(m.payload.id && m.payload.id === payload.id && m.type === type)
+  );
+
   const mutation = {
     id: `mut_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     type,
     payload,
     timestamp: new Date().toISOString(),
   };
-  queue.push(mutation);
-  saveOfflineQueue(queue);
+
+  filtered.push(mutation);
+  await saveOfflineQueue(filtered);
   return mutation;
 };
 
-export const clearOfflineQueue = () => {
-  localStorage.removeItem(QUEUE_STORAGE_KEY);
+export const clearOfflineQueue = async () => {
+  await saveOfflineQueue([]);
 };
 
 export const flushOfflineQueue = async (supabase, userId) => {
   if (!supabase || !userId) return { success: false, count: 0 };
-  const queue = getOfflineQueue();
+  const queue = await getOfflineQueue();
   if (queue.length === 0) return { success: true, count: 0 };
 
-  console.log(`[LifeOS Offline Sync] Flushing ${queue.length} pending mutations to Supabase...`);
+  console.log(`[LifeOS Cloud Sync] Flushing ${queue.length} pending mutations...`);
   let flushedCount = 0;
 
   for (const item of queue) {
     try {
       const { type, payload } = item;
 
-      if (type === 'TASK_TOGGLE') {
-        await supabase
-          .from('tasks')
-          .update({ completed: payload.completed, is_overdue: payload.is_overdue, updated_at: new Date().toISOString() })
-          .eq('id', payload.id);
-      } else if (type === 'TASK_CREATE') {
-        await supabase
-          .from('tasks')
-          .insert({ ...payload, user_id: userId });
+      if (type === 'TASK_UPSERT' || type === 'TASK_TOGGLE' || type === 'TASK_CREATE') {
+        const taskPayload = {
+          id: payload.id,
+          user_id: userId,
+          title: payload.title,
+          description: payload.description || '',
+          category: payload.category || 'Deep Work',
+          priority: payload.priority || 'medium',
+          time: payload.time || '',
+          slot: payload.slot || '',
+          completed: Boolean(payload.completed),
+          is_overdue: Boolean(payload.is_overdue),
+          date: payload.date || 'Today',
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await supabase.from('tasks').upsert(taskPayload, { onConflict: 'id' });
+        if (error) throw error;
       } else if (type === 'TASK_DELETE') {
-        await supabase
-          .from('tasks')
-          .delete()
-          .eq('id', payload.id);
-      } else if (type === 'HABIT_TOGGLE') {
-        await supabase
-          .from('habits')
-          .update({ 
-            completed_today: payload.completedToday, 
-            streak: payload.streak, 
-            history: payload.history, 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', payload.id);
-      } else if (type === 'SCHEDULE_EDIT') {
-        await supabase
-          .from('schedule_slots')
-          .upsert({ ...payload, user_id: userId, updated_at: new Date().toISOString() });
+        const { error } = await supabase.from('tasks').delete().eq('id', payload.id).eq('user_id', userId);
+        if (error) throw error;
+      } else if (type === 'HABIT_UPSERT' || type === 'HABIT_TOGGLE' || type === 'HABIT_CREATE') {
+        const habitPayload = {
+          id: payload.id,
+          user_id: userId,
+          name: payload.name,
+          category: payload.category || 'Health',
+          streak: payload.streak || 0,
+          target: payload.target || '30 min',
+          time_of_day: payload.timeOfDay || payload.time_of_day || 'Morning',
+          history: payload.history || [false, false, false, false, false, false, false],
+          completed_today: Boolean(payload.completedToday ?? payload.completed_today),
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await supabase.from('habits').upsert(habitPayload, { onConflict: 'id' });
+        if (error) throw error;
+      } else if (type === 'HABIT_DELETE') {
+        const { error } = await supabase.from('habits').delete().eq('id', payload.id).eq('user_id', userId);
+        if (error) throw error;
+      } else if (type === 'SCHEDULE_EDIT' || type === 'SCHEDULE_UPSERT') {
+        const slotPayload = {
+          id: payload.id || `slot-${payload.index}`,
+          user_id: userId,
+          time: payload.time,
+          label: payload.label,
+          type: payload.type || 'task',
+          status: payload.status || 'upcoming',
+          task_id: payload.taskId || payload.task_id || null,
+          is_active: Boolean(payload.active ?? payload.is_active),
+          slot_index: payload.index ?? 0,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await supabase.from('schedule_slots').upsert(slotPayload, { onConflict: 'id' });
+        if (error) throw error;
       }
 
       flushedCount++;
     } catch (err) {
-      console.warn('[LifeOS Offline Sync] Failed syncing mutation:', item, err);
-      // Keep remaining in queue if critical network error
+      console.warn('[LifeOS Cloud Sync] Sync failed for mutation:', item, err);
       break;
     }
   }
 
-  // Remove processed items
   const remaining = queue.slice(flushedCount);
-  saveOfflineQueue(remaining);
+  await saveOfflineQueue(remaining);
 
   return { success: true, count: flushedCount, remaining: remaining.length };
 };
-
